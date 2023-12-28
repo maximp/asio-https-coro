@@ -3,12 +3,12 @@
 Example of async https client with ASIO coroutines.
 
 
-#### Building release
+**Building release**
 ```
     make release
 ```
 
-#### Building debug
+**Building debug**
 ```
     make debug
 ```
