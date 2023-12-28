@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.0.2)
 
 #project name
-project(ssl-coro)
+project(https-coro)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -35,6 +35,18 @@ message("OpenSSL include dir: ${OPENSSL_INCLUDE_DIR}")
 message("OpenSSL libraries: ${OPENSSL_LIBRARIES}")
 include_directories(${OPENSSL_INCLUDE_DIR})
 
+#set(Boost_DEBUG 1)
+set(Boost_USE_STATIC_LIBS        ON)
+set(Boost_USE_DEBUG_LIBS        OFF)  # ignore debug libs and
+set(Boost_USE_RELEASE_LIBS       ON)  # only find release libs
+set(Boost_USE_MULTITHREADED      ON)
+set(Boost_USE_STATIC_RUNTIME    OFF)
+set(Boost_NO_SYSTEM_PATHS       OFF)
+set(BOOST_COMPONENTS)
+
+list(APPEND BOOST_COMPONENTS system coroutine)
+find_package(Boost COMPONENTS ${BOOST_COMPONENTS})
+
 #build file list
 file(GLOB HPP_FILES "${CMAKE_CURRENT_LIST_DIR}/*.hpp")
 file(GLOB CPP_FILES "${CMAKE_CURRENT_LIST_DIR}/*.cpp")
@@ -45,3 +57,4 @@ add_executable(${PROJECT_NAME} ${ALL_FILES})
 #linking
 target_link_libraries(${PROJECT_NAME} Threads::Threads)
 target_link_libraries(${PROJECT_NAME} ${OPENSSL_LIBRARIES})
+target_link_libraries(${PROJECT_NAME} Boost::coroutine)
