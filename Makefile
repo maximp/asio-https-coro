@@ -1,4 +1,7 @@
-all: build-debug build-release
+all: debug release
+
+debug: config-debug build-debug
+release: config-release build-release
 
 build-debug: config-debug
 	cd _debug && make
@@ -17,4 +20,3 @@ _debug:
 
 _release:
 	mkdir _release
-

@@ -14,6 +14,9 @@
 #include <boost/beast/http.hpp>
 
 #include <stdexcept>
+#include <mutex>
+#include <condition_variable>
+#include <atomic>
 
 #include "uri.hpp"
 
@@ -80,31 +83,48 @@ private:
 };
 
 template<typename _Arg>
-void resolve(_Arg& ctx, const std::string& host,
+void resolve(_Arg& ctx, int num, const std::string& host,
     const std::string& service, const std::string& uri,
     asio::yield_context yield)
 {
     try
     {
         asio::ip::tcp::resolver resolver(ctx);
-        auto rr = resolver.resolve(host, service);
+        auto rr = resolver.async_resolve(host, service, yield);
         std::cout << host << " resolved to:" << std::endl;
         for(auto r : rr)
             std::cout << r.endpoint() << std::endl;
 
-        for(auto r : rr)
+        std::mutex mtx;
+        std::condition_variable cv;
+        int active = num;
+        for(int i = 0; i < num; ++i)
         {
-            try
-            {
-                session s(ctx);
-                s.start(r.endpoint(), host, uri, yield);
-                break;
-            }
-            catch(const std::exception& e)
-            {
-                std::cerr << "Request to " << r.endpoint() << " failed: " << e.what() << std::endl;
-            }
+            asio::spawn(ctx,
+                [&](asio::yield_context yield)
+                {
+                    for(auto r : rr)
+                    {
+                        try
+                        {
+                            session s(ctx);
+                            s.start(r.endpoint(), host, uri, yield);
+                            break;
+                        }
+                        catch(const std::exception& e)
+                        {
+                            std::cerr << "Request to " << r.endpoint() << " failed: " << e.what() << std::endl;
+                        }
+                    }
+
+                    std::unique_lock<std::mutex> lock(mtx);
+                    if(--active == 0)
+                        cv.notify_one();
+                });
         }
+
+        std::unique_lock<std::mutex> lock(mtx);
+        cv.wait(lock, [&active] { return active == 0; });
     }
     catch (const std::exception& e)
     {
@@ -144,17 +164,12 @@ int main(int argc, char* argv[])
             context.stop();
         });
 
-        std::atomic_int active(num);
-        for(int i = 0; i < num; ++i)
-        {
-            asio::spawn(context,
-                [&](asio::yield_context yield)
-                {
-                    resolve(context, u.host(), u.service(), u.path(), yield);
-                    if(--active == 0)
-                        context.stop();
-                });
-        }
+        asio::spawn(context,
+            [&](asio::yield_context yield)
+            {
+                resolve(context, num, u.host(), u.service(), u.path(), yield);
+                context.stop();
+            });
 
         context.join();
     }
