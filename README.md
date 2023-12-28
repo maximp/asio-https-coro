@@ -1,14 +1,14 @@
+## ASIO HTTPS Client Example Using Coroutines
+
 Example of async https client with ASIO coroutines.
 
 
-Release:
+#### Building release
 ```
-    make config-release
-    make build-release
+    make release
 ```
 
-Debug:
+#### Building debug
 ```
-    make config-debug
-    make build-debug
+    make debug
 ```
