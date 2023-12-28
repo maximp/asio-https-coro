@@ -82,10 +82,9 @@ private:
     std::string         _host;
 };
 
-template<typename _Arg>
-void resolve(_Arg& ctx, int num, const std::string& host,
-    const std::string& service, const std::string& uri,
-    asio::yield_context yield)
+template<typename _Arg, typename _Handler>
+void resolve(_Arg& ctx, const std::string& host, const std::string& service,
+        asio::yield_context yield, _Handler handler)
 {
     try
     {
@@ -95,41 +94,48 @@ void resolve(_Arg& ctx, int num, const std::string& host,
         for(auto r : rr)
             std::cout << r.endpoint() << std::endl;
 
-        std::mutex mtx;
-        std::condition_variable cv;
-        int active = num;
-        for(int i = 0; i < num; ++i)
-        {
-            asio::spawn(ctx,
-                [&](asio::yield_context yield)
-                {
-                    for(auto r : rr)
-                    {
-                        try
-                        {
-                            session s(ctx);
-                            s.start(r.endpoint(), host, uri, yield);
-                            break;
-                        }
-                        catch(const std::exception& e)
-                        {
-                            std::cerr << "Request to " << r.endpoint() << " failed: " << e.what() << std::endl;
-                        }
-                    }
-
-                    std::unique_lock<std::mutex> lock(mtx);
-                    if(--active == 0)
-                        cv.notify_one();
-                });
-        }
-
-        std::unique_lock<std::mutex> lock(mtx);
-        cv.wait(lock, [&active] { return active == 0; });
+        handler(rr);
     }
     catch (const std::exception& e)
     {
         std::cerr << "exception: " << e.what() << std::endl;
     }
+}
+
+template<typename _Arg>
+void request(_Arg& ctx, const asio::ip::tcp::resolver::results_type& rr, int num,
+        const std::string& host, const std::string& uri, asio::yield_context yield)
+{
+    std::mutex mtx;
+    std::condition_variable cv;
+    int active = num;
+    for(int i = 0; i < num; ++i)
+    {
+        asio::spawn(ctx,
+            [&](asio::yield_context yield)
+            {
+                for(auto r : rr)
+                {
+                    try
+                    {
+                        session s(ctx);
+                        s.start(r.endpoint(), host, uri, yield);
+                        break;
+                    }
+                    catch(const std::exception& e)
+                    {
+                        std::cerr << "Request to " << r.endpoint() << " failed: " << e.what() << std::endl;
+                    }
+                }
+
+                std::unique_lock<std::mutex> lock(mtx);
+                if(--active == 0)
+                    cv.notify_one();
+            });
+    }
+
+    std::unique_lock<std::mutex> lock(mtx);
+    cv.wait(lock, [&active] { return active == 0; });
 }
 
 int main(int argc, char* argv[])
@@ -167,7 +173,11 @@ int main(int argc, char* argv[])
         asio::spawn(context,
             [&](asio::yield_context yield)
             {
-                resolve(context, num, u.host(), u.service(), u.path(), yield);
+                resolve(context, u.host(), u.service(), yield,
+                    [&](const asio::ip::tcp::resolver::results_type& rr)
+                    {
+                        request(context, rr, num, u.host(), u.path(), yield);
+                    });
                 context.stop();
             });
 
